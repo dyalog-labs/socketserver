@@ -1,0 +1,204 @@
+:Namespace Socket
+    _stop←0
+    _started←0
+    _stopped←1
+    ServerName←''
+    Port←0
+    BufferSize←10000
+    WaitTimeout←1000
+    LDRC←''
+
+    ∇ (rc msg)←Start args;t;i;p;r
+      :If _started
+          →0⊣(rc msg)←¯1 'Server already started'
+      :EndIf
+      :If _stop
+          →0⊣(rc msg)←¯1 'Server is in the process of stopping'
+      :EndIf
+      (rc msg)←1 ''
+      :Trap 0
+          ⍝ Protocol, IP, Port
+          t i p←{⍵⊆⍨~(≢⍵)↑(⊢∊⍨∘⍳∘⊃⌈/)(⊃,(⊃⌽))':'(⍸⍷)⍵}args ⍝ Remember, IPv6 possible...
+          :If ~t(⊆⍛∊)⍥⎕C,¨'JT'
+            →0⊣(rc msg)←¯1 'Invalid specified protocol'
+          :EndIf
+          Port←⊃2⊃⎕VFI p
+          :If 0≠⊃(rc msg)←LoadConga ⋄ →0 ⋄ :EndIf
+          {}LDRC.SetProp'.' 'EventMode' 1
+          :If 0≠rc←1⊃r←LDRC.Srv ServerName''Port'raw'BufferSize
+              →0⊣(rc msg)←rc('Cannot start server on port ',(⍕Port),' (rc=',(⍕rc),')')
+          :EndIf
+          ServerName←2⊃r
+          _Listen&t
+          (rc msg)←0('Socket server listening on port ',⍕Port)
+      :Else
+          (rc msg)←¯1 ⎕DMX.EM
+      :EndTrap
+    ∇
+
+    ∇ (rc msg)←Stop;ts
+      :If _stop
+          →0⊣(rc msg)←¯1 'Server is already stopping'
+      :EndIf
+      :If ~_started
+          →0⊣(rc msg)←¯1 'Server is not running'
+      :EndIf
+      ts←⎕AI[3]
+      _stop←1
+      ⎕←'SocketServer shutting down'
+      :Trap 0 ⋄ {}LDRC.Clt'' 'localhost'Port'raw' ⋄ :EndTrap ⍝ unblock LDRC.Wait
+      :While ~_stopped
+          :If (WaitTimeout+5000)<⎕AI[3]-ts
+              →0⊣(rc msg)←¯1 'Server seems stuck'
+          :EndIf
+          {}⎕DL 0 ⍝ yield to allow _Listen thread to run
+      :EndWhile
+      (rc msg)←0 'SocketServer stopped'
+    ∇
+
+    ∇ (rc msg)←LoadConga;ref;root;nc;n;ns;congaCopied;cref;failed
+      (rc msg)←1 ''
+      :Hold '∆SOCKETnInitConga'
+          :If {6 16 999::1 ⋄ ''≡LDRC:1 ⋄ 0⊣LDRC.Describe'.'}''
+              LDRC←''
+              ns←'Conga' 'DRC'
+              :For root :In ## #
+                  ref nc←root{1↑¨⍵{(×⍵)∘/¨⍺ ⍵}⍺.⎕NC ⍵}ns
+                  :If 9=⊃⌊nc ⋄ :Leave ⋄ :EndIf
+              :EndFor
+              :If 9=⊃⌊nc
+                  cref←root⍎∊ref
+                  :If {999::0 ⋄ 1⊣⍵.Describe'.'}cref ⍝ already initialized?
+                      LDRC←cref
+                  :Else
+                      LDRC←_InitConga cref
+                  :EndIf
+                  →∆END↓⍨0∊⍴msg←(''≡LDRC)/(⍕root),'.',(∊ref),' is not a valid Conga instance'
+              :Else
+     ∆COPY:
+                  congaCopied←0
+                  :For n :In ns
+                      :Trap 0
+                          n ⎕CY'conga'
+                          LDRC←_InitConga⍎n
+                          →∆END↓⍨0∊⍴msg←(''≡LDRC)/n,' was copied from conga but is not valid'
+                          →∆COPIED⊣congaCopied←1
+                      :EndTrap
+                  :EndFor
+                  →∆END↓⍨0∊⍴msg←(~congaCopied)/'Could not copy Conga or DRC from [DYALOG]/ws/conga'
+     ∆COPIED:
+              :EndIf
+          :EndIf
+          rc←0
+     ∆END:
+      :EndHold
+    ∇
+
+    ∇ LDRC←_InitConga cref;failed
+      LDRC←'' ⋄ failed←0
+     ∆TRY:
+      :Trap 0
+          :If ∨/'.Conga'⍷⍕cref
+              LDRC←cref.Init'DyalogSocketServer'
+          :ElseIf 0≡⊃cref.Init''
+              LDRC←cref
+          :EndIf
+      :Else
+          :If ~failed ⋄ →∆TRY⊣failed←1 ⋄ :EndIf
+      :EndTrap
+    ∇
+
+    ∇ _Listen protocol;obj;data;rc;evt;conx;wres
+      (_started _stopped)←1 0
+      :While ~_stop
+          :Trap 0
+              wres←LDRC.Wait ServerName WaitTimeout
+              (rc obj evt data)←4↑wres
+              conx←obj(⍳↓⊣)'.'
+              :Select rc
+              :Case 0
+                  :Select evt
+                  :Case 'Connect'
+                  :Case 'Block'
+                      :Select protocol
+                      :Case ,'T'
+                        _ProcessText(obj data)
+                      :Case ,'J'
+                        _ProcessJson(obj data)
+                      :EndSelect
+                  :CaseList 'Closed' 'BlockLast'
+                  :Case 'Timeout'
+                  :Case 'Error'
+                  :EndSelect
+              :Case 1010 ⍝ object not found - server was closed
+                  :If ~_stop
+                      ⎕←'Socket server object closed externally - shutting down'
+                      _stop←1
+                  :EndIf
+              :Else
+                  ⎕←'Wait failed with rc=',⍕rc
+              :EndSelect
+          :Else
+              ⎕←'*** Server error: ',⎕DMX.Message
+          :EndTrap
+      :EndWhile
+      :Trap 0 ⋄ {}LDRC.Close ServerName ⋄ :EndTrap
+      (_stop _started _stopped)←0 0 1
+    ∇
+
+    ∇ _ProcessText(obj data);result
+      :Trap 0
+          result←⍬
+          {
+              {
+                  0=⊃⍵:⍬
+                  result,←⊂⍕2⊃⍵
+              }3 1(86⌶)⍵
+          }¨(⎕UCS 10)(≠⊆⊢)'UTF-8'⎕UCS data
+
+          {}LDRC.Send obj('UTF-8'⎕UCS∊{⍵,⎕UCS 10}¨result)
+      :Else
+          {}LDRC.Send obj(10,⍨'UTF-8'⎕UCS'Error: ',⎕DMX.EM,' : ',⎕DMX.Message)
+      :EndTrap
+    ∇
+
+    ∇ _ProcessJson(obj dataj);data;ex;result
+      :Trap 0
+          result←⍬
+          {
+              0::result,←⊂1 ⎕JSON{
+                  e←⎕NS ⎕DMX
+                  e.DM←,⊂'JSON Conversion Error'
+                  (e:e)
+              }⍬
+              data←0 ⎕JSON ⍵
+              0::result,←⊂1 ⎕JSON data ⎕NS(e:⎕DMX)
+              ex←⎕VGET⊂'data.ex' ''
+              r←3 1(86⌶)ex
+              ~2 9∊⍨⌊⎕NC⊂'r':result,←⊂1 ⎕JSON data
+              {
+                  0=⊃⍵:result,←⊂1 ⎕JSON data
+                  r←2⊃⍵
+                  ⍝ 2 9∊⍨⌊⎕NC⊂'r'
+                  data.r←r
+                  ⍝:EndIf
+                  result,←⊂1 ⎕JSON⍠'HighRank' 'Split'⊢data
+              }r
+          }¨(⎕UCS 10)(≠⊆⊢)'UTF-8'⎕UCS dataj
+
+          {}LDRC.Send obj('UTF-8'⎕UCS∊{⍵,⎕UCS 10}¨result)
+      :Else
+          {}LDRC.Send obj(10,⍨'UTF-8'⎕UCS'Error: ',⎕DMX.EM,' : ',⎕DMX.Message)
+      :EndTrap
+    ∇
+
+
+    ∇ _←_Run;args
+      args←(⊢2⎕NQ#'GetEnvironment',⊂)'SOCKET_INIT'
+      :If 0≠⍴args
+        ⎕←2⊃Start args
+      :EndIf
+      _←⍬
+    ∇
+    _←_Run
+:EndNamespace

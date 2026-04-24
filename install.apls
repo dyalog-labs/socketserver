@@ -1,0 +1,5 @@
+#!/usr/bin/dyalogscript DYALOG_INITSESSION=1
+dir←'/StartupSession/Dyalog/',⍨2⎕NQ#'GetEnvironment' 'DYALOG'
+t←⊃⎕NGET './Socket.apln'
+t ⎕NPUT (dir,'Socket.apln') 1
+⎕←'SocketServer successfully installed'
