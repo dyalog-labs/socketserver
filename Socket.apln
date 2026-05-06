@@ -114,7 +114,7 @@
     ∇ _Listen protocol;obj;data;rc;evt;conx;wres
       (_started _stopped)←1 0
       :While ~_stop
-          :Trap 1000
+          :Trap 0
               wres←LDRC.Wait ServerName WaitTimeout
               (rc obj evt data)←4↑wres
               conx←obj(⍳↓⊣)'.'
