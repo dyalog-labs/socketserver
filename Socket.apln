@@ -153,6 +153,7 @@
       :Trap 0
           result←⍬
           {
+              0::result,←⊂'Error: ',⎕DMX.EM,' : ',⎕DMX.Message
               {
                   0=⊃⍵:⍬
                   result,←⊂⍕2⊃⍵

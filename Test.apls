@@ -1,0 +1,179 @@
+⍝ Test suite for Socket server
+⍝ Run with: dyalogscript Test.apls
+⍝
+⍝ Tests marked "(bug)" expect the current broken behaviour and FAIL
+⍝ once that bug is fixed — they intentionally prove something is broken.
+
+⍝ ─── Load Socket namespace ──────────────────────────────────────────────────
+src←⊃⎕NGET './Socket.apln' 1
+⎕FIX src
+
+⍝ ─── Test framework ─────────────────────────────────────────────────────────
+pass←0 ⋄ fail←0
+
+∇ name Check cond
+  :If cond
+      pass+←1
+      ⎕←'  pass  ',name
+  :Else
+      fail+←1
+      ⎕←'  FAIL  ',name
+  :EndIf
+∇
+
+PORT_T←11615
+PORT_J←11616
+
+⍝ ─── Client library  ─────────────────────────────────────────────────────────
+⍝ DRC is copied AFTER the first Socket.Start so that LoadConga's discovery
+⍝ finds and uses Conga (which Socket already owns). DRC is independent.
+⍝ We initialise DRC lazily the first time we need it.
+
+∇ resp←port SendRaw bytes;r;conn;wr
+  ⍝ Open a fresh raw TCP connection to port, send bytes, return response bytes.
+  ⍝ Returns ⍬ if the server sends nothing (client times out after 1.5 s).
+  r←DRC.Clt '' 'localhost' port 'raw' 10000
+  conn←2⊃r
+  r←DRC.Send conn bytes
+  wr←DRC.Wait conn 1500
+  r←DRC.Close conn
+  :If 100=⊃wr ⋄ resp←⍬ ⋄ :Else ⋄ resp←4⊃wr ⋄ :EndIf
+∇
+
+∇ resp←port TRecv expr
+  ⍝ Send a single newline-terminated expression via text protocol.
+  ⍝ Returns the decoded UTF-8 response string, or '' on timeout.
+  :If ⍬≡r←port SendRaw ('UTF-8'⎕UCS expr,⎕UCS 10)
+      resp←''
+  :Else
+      resp←'UTF-8'⎕UCS r
+  :EndIf
+∇
+
+∇ resp←port JRecv json
+  ⍝ Send a single JSON line via JSON protocol. Returns raw response string.
+  :If ⍬≡r←port SendRaw ('UTF-8'⎕UCS json,⎕UCS 10)
+      resp←''
+  :Else
+      resp←'UTF-8'⎕UCS r
+  :EndIf
+∇
+
+∇ obj←JParse resp
+  ⍝ Parse a JSON response string (strips trailing newline).
+  ⍝ On parse error returns a namespace with a PARSE_ERROR field.
+  :Trap 0
+      obj←0 ⎕JSON ¯1↓resp
+  :Else
+      obj←⎕NS ''
+      obj.PARSE_ERROR←⎕DMX.EM
+  :EndTrap
+∇
+
+⍝ ═══════════════════════════════════════════════════════════════════════════
+⍝ 1. Start/Stop guards  (pure state tests — no live server needed)
+⍝ ═══════════════════════════════════════════════════════════════════════════
+⎕←'─── 1. Start/Stop Guards ───'
+
+rc msg←Socket.Start 'X:localhost:11615'
+'invalid protocol → rc=¯1' Check ¯1=rc
+
+⍝ Simulate mid-stop state without ever binding a port
+Socket._stop←1
+rc msg←Socket.Start 'T:localhost:11615'
+'start while stopping → rc=¯1' Check ¯1=rc
+Socket._stop←0
+
+rc msg←Socket.Stop
+'stop when not running → rc=¯1' Check ¯1=rc
+
+⍝ ═══════════════════════════════════════════════════════════════════════════
+⍝ 2. Text protocol
+⍝ ═══════════════════════════════════════════════════════════════════════════
+⎕←'─── 2. Text Protocol ───'
+
+rc msg←Socket.Start 'T:localhost:',⍕PORT_T
+'T: server starts → rc=0' Check 0=rc
+'T: _started flag set' Check Socket._started
+
+⍝ Init DRC client after server has loaded Conga, to avoid clobbering LoadConga
+'DRC' ⎕CY 'conga'
+r←DRC.Init ''
+
+rc msg←Socket.Start 'T:localhost:',⍕PORT_T
+'T: double start → rc=¯1' Check ¯1=rc
+
+'T: 2+2 → "4\n"' Check (PORT_T TRecv '2+2')≡'4',⎕UCS 10
+
+'T: ⍳5 → "1 2 3 4 5\n"' Check (PORT_T TRecv '⍳5')≡'1 2 3 4 5',⎕UCS 10
+
+resp←PORT_T TRecv '2 3⍴⍳6'
+'T: matrix result has multiple lines' Check 1<+/resp=⎕UCS 10
+
+'T: 1÷0 → starts with "Error:"' Check 'Error:'≡6↑PORT_T TRecv '1÷0'
+
+⍝ Assignment has no result — server sends ⍬ bytes, client times out.
+⍝ This is a silent protocol gap: the client cannot distinguish "no result"
+⍝ from a slow server without using a per-line protocol like JSON.
+'T: silent assignment → server sends nothing (client times out)' Check ''≡PORT_T TRecv 'x←42'
+
+⍝ Multi-line: two expressions in one send → two result lines in one response
+resp←'UTF-8'⎕UCS PORT_T SendRaw ('UTF-8'⎕UCS '10+1',(⎕UCS 10),'10+2',⎕UCS 10)
+'T: multi-line returns both results' Check resp≡'11',(⎕UCS 10),'12',⎕UCS 10
+
+rc msg←Socket.Stop
+'T: stop → rc=0' Check 0=rc
+'T: _started cleared after stop' Check ~Socket._started
+
+rc msg←Socket.Stop
+'T: double stop → rc=¯1' Check ¯1=rc
+
+⍝ ═══════════════════════════════════════════════════════════════════════════
+⍝ 3. JSON protocol
+⍝ ═══════════════════════════════════════════════════════════════════════════
+⎕←'─── 3. JSON Protocol ───'
+
+rc msg←Socket.Start 'J:localhost:',⍕PORT_J
+'J: server starts → rc=0' Check 0=rc
+
+obj←JParse PORT_J JRecv '{"ex":"2+2"}'
+'J: 2+2 → r=4' Check obj.r≡4
+'J: 2+2 → ex echoed' Check obj.ex≡'2+2'
+
+obj←JParse PORT_J JRecv '{"ex":"⍳3"}'
+'J: ⍳3 → r=1 2 3' Check obj.r≡1 2 3
+
+obj←JParse PORT_J JRecv '{"ex":"2 3⍴⍳6"}'
+'J: high-rank result present' Check 0≠⎕NC⊂'obj.r'
+⍝ JSON round-trips high-rank arrays as nested vectors, not matrices
+'J: high-rank r round-trips as nested rows' Check obj.r≡(1 2 3)(4 5 6)
+
+obj←JParse PORT_J JRecv '{"ex":"1÷0"}'
+'J: error → e field present' Check 9=⌊⎕NC⊂'obj.e'
+'J: error → r field absent' Check 0=⎕NC⊂'obj.r'
+
+obj←JParse PORT_J JRecv '{}'
+'J: missing ex → no r field' Check 0=⎕NC⊂'obj.r'
+
+⍝ Per-line independence: first line errors, second must still produce a result
+resp←'UTF-8'⎕UCS PORT_J SendRaw ('UTF-8'⎕UCS '{"ex":"1÷0"}',(⎕UCS 10),'{"ex":"3+3"}',⎕UCS 10)
+lines←(⎕UCS 10)(≠⊆⊢)resp
+'J: two JSON lines → two responses' Check 2=≢lines
+:If 2=≢lines
+    obj1←JParse (⊃lines),⎕UCS 10
+    obj2←JParse (⊃⌽lines),⎕UCS 10
+    'J: first line has e (independently handled)' Check 9=⌊⎕NC⊂'obj1.e'
+    'J: second line not dropped → r=6' Check (0≠⎕NC⊂'obj2.r')∧6≡obj2.r
+:EndIf
+
+obj←JParse PORT_J JRecv 'not json at all'
+'J: invalid JSON → JSON error response with e' Check 9=⌊⎕NC⊂'obj.e'
+
+rc msg←Socket.Stop
+'J: stop → rc=0' Check 0=rc
+
+⍝ ═══════════════════════════════════════════════════════════════════════════
+⍝ Results
+⍝ ═══════════════════════════════════════════════════════════════════════════
+⎕←''
+⎕←(⍕pass+fail),' tests: ',(⍕pass),' passed, ',(⍕fail),' failed'
