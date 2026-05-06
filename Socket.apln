@@ -7,8 +7,9 @@
     BufferSize←10000
     WaitTimeout←1000
     LDRC←''
+    eSpace←#
 
-    ∇ (rc msg)←Start args;t;i;p;r
+    ∇ (rc msg)←Start args;t;i;p;r;x
       :If _started
           →0⊣(rc msg)←¯1 'Server already started'
       :EndIf
@@ -16,11 +17,13 @@
           →0⊣(rc msg)←¯1 'Server is in the process of stopping'
       :EndIf
       (rc msg)←1 ''
+      x←(⎕RSI∊⎕THIS)⍳0
+      eSpace←x(86⌶)'⎕THIS'
       :Trap 0
           ⍝ Protocol, IP, Port
           t i p←{⍵⊆⍨~(≢⍵)↑(⊢∊⍨∘⍳∘⊃⌈/)(⊃,(⊃⌽))':'(⍸⍷)⍵}args ⍝ Remember, IPv6 possible...
           :If ~t(⊆⍛∊)⍥⎕C,¨'JT'
-            →0⊣(rc msg)←¯1 'Invalid specified protocol'
+              →0⊣(rc msg)←¯1 'Invalid specified protocol'
           :EndIf
           Port←⊃2⊃⎕VFI p
           :If 0≠⊃(rc msg)←LoadConga ⋄ →0 ⋄ :EndIf
@@ -111,7 +114,7 @@
     ∇ _Listen protocol;obj;data;rc;evt;conx;wres
       (_started _stopped)←1 0
       :While ~_stop
-          :Trap 0
+          :Trap 1000
               wres←LDRC.Wait ServerName WaitTimeout
               (rc obj evt data)←4↑wres
               conx←obj(⍳↓⊣)'.'
@@ -122,9 +125,9 @@
                   :Case 'Block'
                       :Select protocol
                       :Case ,'T'
-                        _ProcessText(obj data)
+                          _ProcessText(obj data)
                       :Case ,'J'
-                        _ProcessJson(obj data)
+                          _ProcessJson(obj data)
                       :EndSelect
                   :CaseList 'Closed' 'BlockLast'
                   :Case 'Timeout'
@@ -153,9 +156,9 @@
               {
                   0=⊃⍵:⍬
                   result,←⊂⍕2⊃⍵
-              }3 1(86⌶)⍵
+              }0 1(eSpace.(86⌶))⍵
           }¨(⎕UCS 10)(≠⊆⊢)'UTF-8'⎕UCS data
-
+     
           {}LDRC.Send obj('UTF-8'⎕UCS∊{⍵,⎕UCS 10}¨result)
       :Else
           {}LDRC.Send obj(10,⍨'UTF-8'⎕UCS'Error: ',⎕DMX.EM,' : ',⎕DMX.Message)
@@ -174,7 +177,7 @@
               data←0 ⎕JSON ⍵
               0::result,←⊂1 ⎕JSON data ⎕NS(e:⎕DMX)
               ex←⎕VGET⊂'data.ex' ''
-              r←3 1(86⌶)ex
+              r←{0 1(eSpace.(86⌶))ex}⍬
               ~2 9∊⍨⌊⎕NC⊂'r':result,←⊂1 ⎕JSON data
               {
                   0=⊃⍵:result,←⊂1 ⎕JSON data
@@ -185,7 +188,7 @@
                   result,←⊂1 ⎕JSON⍠'HighRank' 'Split'⊢data
               }r
           }¨(⎕UCS 10)(≠⊆⊢)'UTF-8'⎕UCS dataj
-
+     
           {}LDRC.Send obj('UTF-8'⎕UCS∊{⍵,⎕UCS 10}¨result)
       :Else
           {}LDRC.Send obj(10,⍨'UTF-8'⎕UCS'Error: ',⎕DMX.EM,' : ',⎕DMX.Message)
@@ -194,9 +197,9 @@
 
 
     ∇ _←_Run;args
-      args←(⊢2⎕NQ#'GetEnvironment',⊂)'SOCKET_INIT'
+      args←(⊢2 ⎕NQ #'GetEnvironment',⊂)'SOCKET_INIT'
       :If 0≠⍴args
-        ⎕←2⊃Start args
+          ⎕←2⊃Start args
       :EndIf
       _←⍬
     ∇
