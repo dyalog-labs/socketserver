@@ -112,10 +112,9 @@ resp←PORT_T TRecv '2 3⍴⍳6'
 
 'T: 1÷0 → starts with "Error:"' Check 'Error:'≡6↑PORT_T TRecv '1÷0'
 
-⍝ Assignment has no result — server sends ⍬ bytes, client times out.
-⍝ This is a silent protocol gap: the client cannot distinguish "no result"
-⍝ from a slow server without using a per-line protocol like JSON.
-'T: silent assignment → server sends nothing (client times out)' Check ''≡PORT_T TRecv 'x←42'
+⍝ Shy/no-result expressions reply with an empty line, so clients get
+⍝ one reply line per input line and don't have to rely on read timeouts.
+'T: silent assignment → server replies with empty line' Check (PORT_T TRecv 'x←42')≡,⎕UCS 10
 
 ⍝ Multi-line: two expressions in one send → two result lines in one response
 resp←'UTF-8'⎕UCS PORT_T SendRaw ('UTF-8'⎕UCS '10+1',(⎕UCS 10),'10+2',⎕UCS 10)

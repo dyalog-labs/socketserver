@@ -155,7 +155,7 @@
           {
               0::result,←⊂'Error: ',⎕DMX.EM,' : ',⎕DMX.Message
               {
-                  0=⊃⍵:⍬
+                  0=⊃⍵:result,←⊂''
                   result,←⊂⍕2⊃⍵
               }0 1(eSpace.(86⌶))⍵
           }¨(⎕UCS 10)(≠⊆⊢)'UTF-8'⎕UCS data
