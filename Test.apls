@@ -1,3 +1,4 @@
+#!/bin/env dyalogscript
 ⍝ Test suite for Socket server
 ⍝ Run with: dyalogscript Test.apls
 ⍝

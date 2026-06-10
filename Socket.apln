@@ -7,7 +7,7 @@
     BufferSize←10000
     WaitTimeout←1000
     LDRC←''
-    eSpace←#
+    eSpace←''
 
     ∇ (rc msg)←Start args;t;i;p;r;x
       :If _started
@@ -157,7 +157,7 @@
               {
                   0=⊃⍵:result,←⊂''
                   result,←⊂⍕2⊃⍵
-              }0 1(eSpace.(86⌶))⍵
+              }0 1(({eSpace≢'':eSpace⋄#}⍬).(86⌶))⍵
           }¨(⎕UCS 10)(≠⊆⊢)'UTF-8'⎕UCS data
      
           {}LDRC.Send obj('UTF-8'⎕UCS∊{⍵,⎕UCS 10}¨result)
@@ -178,7 +178,7 @@
               data←0 ⎕JSON ⍵
               0::result,←⊂1 ⎕JSON data ⎕NS(e:⎕DMX)
               ex←⎕VGET⊂'data.ex' ''
-              r←{0 1(eSpace.(86⌶))ex}⍬
+              r←{0 1(({eSpace≢'':eSpace⋄#}⍬).(86⌶))ex}⍬
               ~2 9∊⍨⌊⎕NC⊂'r':result,←⊂1 ⎕JSON data
               {
                   0=⊃⍵:result,←⊂1 ⎕JSON data
