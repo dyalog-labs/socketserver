@@ -32,13 +32,31 @@ echo '{"ex":"2+2"}' | nc localhost 11612
 
 ## Installation
 
-Download `install.apls` from the [latest release](https://github.com/dyalog-labs/socketserver/releases/latest) and run it:
+The installer fetches `Socket.apln` from GitHub and writes it to `$DYALOG/StartupSession/Dyalog/`, making it available in every workspace automatically.
+
+**One line (Linux/macOS).** Pipe the installer straight into `dyalogscript`:
+
+```sh
+curl -fsSL https://github.com/dyalog-labs/socketserver/releases/latest/download/install.apls | tail -n +2 | dyalogscript /dev/stdin
+```
+
+`tail -n +2` strips the shebang line, which `dyalogscript` would otherwise try to evaluate as APL.
+
+Writing into a system-wide Dyalog install usually needs elevated permissions. Put `sudo` on the `dyalogscript` end of the pipe, not in front of `curl` — otherwise only the download runs as root and the file write still fails:
+
+```sh
+curl -fsSL https://github.com/dyalog-labs/socketserver/releases/latest/download/install.apls | tail -n +2 | sudo dyalogscript /dev/stdin
+```
+
+This pipeline relies on `tail` and `/dev/stdin`, so it is Linux/macOS only. On Windows, use the download method below.
+
+**Download and run.** If you'd rather read the script before trusting it, or you're on Windows, download `install.apls` from the [latest release](https://github.com/dyalog-labs/socketserver/releases/latest) and run it:
 
 ```sh
 dyalogscript install.apls
 ```
 
-This fetches `Socket.apln` from GitHub and writes it to `$DYALOG/StartupSession/Dyalog/`, making it available in every workspace automatically. On a system-wide Dyalog install you may need `sudo` (Linux) or an Administrator shell (Windows) to write there.
+Add `sudo` (Linux) or use an Administrator shell (Windows) if the write is denied.
 
 **Manual install.** If you'd rather place the file yourself, download `Socket.apln` from the release and copy it into your Dyalog startup session folder:
 
