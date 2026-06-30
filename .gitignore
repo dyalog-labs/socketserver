@@ -1,2 +1,6 @@
 .claude
-.devcontainer
+
+# APL artifacts
+*.dws
+*.dcfg
+*.dwx

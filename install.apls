@@ -1,5 +1,35 @@
 #!/usr/bin/dyalogscript DYALOG_INITSESSION=1
-dir←'/StartupSession/Dyalog/',⍨2⎕NQ#'GetEnvironment' 'DYALOG'
-t←⊃⎕NGET './Socket.apln'
-t ⎕NPUT (dir,'Socket.apln') 1
-⎕←'SocketServer successfully installed'
+dyalog←2⎕NQ#'GetEnvironment' 'DYALOG'
+:If 0=≢dyalog
+    ⎕←'Error: DYALOG environment variable is not set'
+    ⎕off 1
+:EndIf
+
+url←'https://github.com/dyalog-labs/socketserver/releases/latest/download/Socket.apln'
+dir←dyalog,'/StartupSession/Dyalog/'
+
+HttpCommand←⎕FIX'file://',(2⎕NQ#'GetEnvironment' 'DYALOG'),'/Library/Conga/HttpCommand.dyalog'
+⎕←'Fetching Socket.apln from GitHub...'
+r←HttpCommand.Get url
+:If r.rc≠0
+    ⎕←'Download failed: ',r.msg
+    ⎕off 1
+:EndIf
+:If 200≠r.HttpStatus
+    ⎕←'Error: HTTP ',⍕r.HttpStatus
+    ⎕off 1
+:EndIf
+
+:Trap 19 22 ⍝ FILE ACCESS ERROR / FILE NAME ERROR (permissions)
+    :If ~⎕NEXISTS dir ⋄ {}⎕MKDIR dir ⋄ :EndIf
+    (,r.Data)⎕NPUT(dir,'Socket.apln')1
+:Else
+    ⎕←'Permission denied writing to ',dir
+    :If 'Win'≢3↑⊃#⎕WG'APLVersion'
+        ⎕←'Try again with elevated permissions: sudo dyalogscript install.apls'
+    :Else
+        ⎕←'Try again from a shell running as Administrator.'
+    :EndIf
+    ⎕off 1
+:EndTrap
+⎕←'Installed to ',dir,'Socket.apln'

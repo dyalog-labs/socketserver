@@ -1,4 +1,5 @@
 :Namespace Socket
+    Version←'1.0.0'
     _stop←0
     _started←0
     _stopped←1
